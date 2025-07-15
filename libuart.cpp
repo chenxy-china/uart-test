@@ -271,3 +271,38 @@ int send_str(int tty_fd, std::string anyInputs)
 
     return readflag;
 }
+
+int send_str(int tty_fd, std::string anyInputs, int readflag)
+{
+    int len = anyInputs.length();
+    char *dataInputs , *data, *dataSends;
+    dataInputs = (char *)malloc((len+1)*sizeof(char));
+    strcpy(dataInputs,anyInputs.c_str());
+    data = (char *)malloc((len+1)*sizeof(char));
+
+    int i = 0, j = 0;
+    j = str2dex(dataInputs,data,len);
+
+    dataSends = (char *)malloc((j+5)*sizeof(char));
+    memset(dataSends,0,(j+5));
+
+    memset(dataSends,DATAHEAD,1);
+    if(readflag == 0){
+        memset(dataSends+1,WRITEFLAG,1);
+    } else{
+        memset(dataSends+1,READFLAG,1);
+    }
+    memset(dataSends+2,j+3,1);
+    memcpy(dataSends+3,data,j);
+
+    uint16_t crcdata =  CrcValueCalc((uint8_t *)data,j+3);
+    memcpy(dataSends+j+3,(unsigned char *)&crcdata,2);
+
+    send_data(tty_fd, dataSends,(j+5));
+
+    free(dataInputs);
+    free(data);
+    free(dataSends);
+
+    return 0;
+}
