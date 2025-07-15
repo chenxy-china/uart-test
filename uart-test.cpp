@@ -27,6 +27,8 @@
 
 #include <errno.h>
 #include <string.h>
+#include <string>
+#include <iostream>
 
 using namespace std;
 
@@ -61,7 +63,9 @@ int uart_receive(int fd,char *rbuf,int rbuf_len,int timeout_ms)
         }
         else if(rv==0)
         {
+#ifdef DEBUG
             printf("select timeout\n");
+#endif
             return -1;
         }
 
@@ -87,6 +91,12 @@ int uart_send(int fd,char *send,int data_len)
     int len=-1;
 
     len=write(fd,send,data_len);
+#ifdef DEBUG
+    for(int i = 0; i < data_len; i++) {
+        printf("%02x", (unsigned int)*(send+i));
+    }
+    printf("\n");
+#endif
     if(len<0)
     {
         printf("write failure:%s\n",strerror(errno));
@@ -175,18 +185,51 @@ int set_opt(int fd, int nSpeed, int nBits, char nEvent, int nStop)
         perror("com set error");
         return -1;
     }
-    printf("set done!\n");
+
     return 0;
+}
+
+int send_data(int tty_fd, char* send_buff, int data_len)
+{
+    int i,ret,index;
+
+    //send
+    ret = uart_send(tty_fd,send_buff,data_len);
+    if(ret)
+    {
+        perror("uart_send failed!");
+        return -1;
+    }
+
+    return 0;
+}
+
+int receive_data(int tty_fd, char* receive_buff)
+{
+    //receive
+    int i, ret = 0, index = 0;
+    for(i=0;i<100;i++){
+        ret = uart_receive(tty_fd,&receive_buff[index],DATA_LEN-index,10);
+        if(ret>0){
+            index+=ret;
+            if(index>=DATA_LEN)
+                break;
+        }
+    }
+    if(index<=0)
+    {
+        perror("uart_receive failed!");
+        close(tty_fd);
+        return -1;
+    }
+
+    return index;
 }
 
 
 int check_uart(char* uart_name)
 {
     int tty_fd;
-    int i,ret,index;
-    char send_buff[DATA_LEN] = {0};
-    char receive_buff[DATA_LEN] = {0};
-    fd_set rd;
 
     tty_fd = open(uart_name, O_RDWR | O_NOCTTY | O_NDELAY);
     if(tty_fd<0)
@@ -195,125 +238,58 @@ int check_uart(char* uart_name)
         return -1;
     }
 
-    if((ret = set_opt(tty_fd, 115200, 8, 'N', 1)) < 0)
+    //串口波特率：115200，8N1
+    if((set_opt(tty_fd, 115200, 8, 'N', 1)) < 0)
     {
         perror("set lte port set_opt error");
         close(tty_fd);
         return -1;
     }
 
-    //send
-    for(i=0;i<DATA_LEN;i++)
-        send_buff[i]=i;
+    printf("open %s and set opt [115200,8,N,1] done!\n",uart_name);
 
-    ret = uart_send(tty_fd,send_buff,DATA_LEN);
-    if(ret)
-    {
-        perror("uart_send failed!");
-        close(tty_fd);
-        return -1;
-    }
-    
-    //receive
-    index = 0;
-    for(i=0;i<100;i++){
-        ret = uart_receive(tty_fd,&receive_buff[index],DATA_LEN-index,10);
-        if(ret>0){
-            index+=ret;
-            if(index>=DATA_LEN)
-                break;
-        }
-    }
-    if(index<=0)
-    {
-        perror("uart_receive failed!");
-        close(tty_fd);
-        return -1;
-    }
+    return tty_fd;
+}
+int str2dex(char *datain, char *dataout, int len)
+{
+    int i=0,j=0;
+    char str[2] = {0,};
+    char *endptr;
+    int num;
 
-    printf("receive: %s\n",receive_buff);
+    for(i = 0; i < len; i=i+2) {
+        strncpy(str,datain+i,2);
+        num = strtol(str, &endptr, 16); // 16 表示十进制
 
-    //check
-    /*for(i=0;i<DATA_LEN;i++){
-        if(receive_buff[i]!=i){
-            FormatPrint("receive error: buff[%x]=%x\n",i,receive_buff[i]);
-            close(tty_fd);
+        if (*endptr == '\0') { // 确保转换结束于字符串末尾
+#ifdef DEBUG
+            printf("转换后的整数: 0x%02x\n", num);
+#endif
+            memcpy(dataout+j,&num,1);
+            j++;
+        } else {
+            printf("转换失败，未转换的部分: %s\n", endptr);
             return -1;
         }
-            
-    }*/
-
-
-    //
-    close(tty_fd);
-    return 0;
-}
-
-#if 0
-int check_sim(char* uart_name)
-{
-    int tty_fd;
-    int i,ret,index;
-    char send_buff[DATA_LEN] = {0};
-    char receive_buff[DATA_LEN] = {0};
-    fd_set rd;
-
-    tty_fd = open(uart_name, O_RDWR | O_NOCTTY | O_NDELAY);
-    if(tty_fd<0)
-    {
-        FormatPrint("open %s failed!\n", uart_name);
-        return -1;
     }
 
-    if((ret = set_opt(tty_fd, 115200, 8, 'N', 1)) < 0)
-    {
-        perror("set lte port set_opt error");
-        close(tty_fd);
-        return -1;
+#ifdef DEBUG
+    printf("转换后:");  
+    for(i = 0; i < j; i++) {
+        printf("%02x", (unsigned int)*(dataout+i));
     }
-
-    //send
-    for(i=0;i<DATA_LEN;i++)
-        send_buff[i]=i;
-    strcpy(send_buff,"AT\r\n");
-    FormatPrint("send len = %d\n", strlen(send_buff));
-
-    ret = uart_send(tty_fd,send_buff,strlen(send_buff));
-    if(ret)
-    {
-        perror("uart_send failed!");
-        close(tty_fd);
-        return -1;
-    }
-    
-    //receive
-    index = 0;
-    for(i=0;i<100;i++){
-        ret = uart_receive(tty_fd,&receive_buff[index],DATA_LEN-index,10);
-        if(ret>0){
-            index+=ret;
-            if(index>=DATA_LEN)
-                break;
-        }
-    }
-
-    
-    if(index<=0)
-    {
-        perror("uart_receive failed!");
-        close(tty_fd);
-        return -1;
-    }
-
-    FormatPrint("receive: %s\n",receive_buff);
-
-
-    //
-    close(tty_fd);
-    return 0;
-}
+    printf("\n");
 #endif
 
+    return j;
+}
+
+static uint16_t CrcValueCalc(const uint8_t *cpucData, uint16_t usLength);
+
+#define DATAHEAD 0x40
+#define READFLAG 0X03
+#define WRITEFLAG 0x06
+ 
 int main(int argc, char *argv[])
 {
     if(argc != 2)
@@ -322,18 +298,84 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    int ret = 0;
-    ret = check_uart(argv[1]);
-    if(ret == 0)
+    int tty_fd = 0;
+    tty_fd = check_uart(argv[1]);
+    if(tty_fd < 0)
     {
-        printf("UART_test=[OK]\n");
+        printf("check_uart NG\n");
+        // return -1;
     }
-    else
-    {
-        printf("UART_test=[NG]\n");
+
+    while(1){
+        std::string anyInputs;
+        std::cout << "输入用户指令：";
+        std::cin  >> anyInputs;
+
+        if(anyInputs.compare("quit") == 0 || anyInputs.compare("QUIT") == 0 
+        || anyInputs.compare("exit") == 0 || anyInputs.compare("EXIT") == 0)
+            break;
+
+
+        try {
+            int num = std::stoi(anyInputs);
+        } catch (std::invalid_argument const& e) {
+            return -1;
+        } catch (std::out_of_range const& e) {
+            return -1;
+        }
+
+        int len = anyInputs.length();
+        char *dataInputs , *data, *dataSends;
+        dataInputs = (char *)malloc((len+1)*sizeof(char));
+        strcpy(dataInputs,anyInputs.c_str());
+        data = (char *)malloc((len+1)*sizeof(char));
+
+        int i = 0, j = 0;
+        j = str2dex(dataInputs,data,len);
+
+        dataSends = (char *)malloc((j+5)*sizeof(char));
+        memset(dataSends,0,(j+5));
+
+        memset(dataSends,DATAHEAD,1);
+        int readflag = 0;
+        if(j > 2){
+            memset(dataSends+1,WRITEFLAG,1);
+        } else{
+            memset(dataSends+1,READFLAG,1);
+            readflag = 1;
+        }
+        memset(dataSends+2,j+3,1);
+        memcpy(dataSends+3,data,j);
+
+        uint16_t crcdata =  CrcValueCalc((uint8_t *)data,j+3);
+        memcpy(dataSends+j+3,(unsigned char *)&crcdata,2);
+
+        send_data(tty_fd, dataSends,(j+5));
+
+        char receive_buff[DATA_LEN] = {0};
+        if(readflag != 0){
+            int index = receive_data(tty_fd,receive_buff);
+
+#ifdef DEBUG
+            printf("receive_buff : %d , ", index);  
+            for(i = 0 ;i < index; i++){
+                printf("%c",*(receive_buff+i));
+            }
+            printf("\n");
+#endif
+            // char* datarcv = (char *)malloc((index+1)*sizeof(char));
+            // str2dex(receive_buff,datarcv,index);
+            // free(datarcv);
+        }
+
+        free(dataInputs);
+        free(data);
+        free(dataSends);
     }
+
+    close(tty_fd);
     
-    return ret;
+    return 0;
 }
 
 /**
@@ -344,24 +386,24 @@ int main(int argc, char *argv[])
  * @return uint16_t 返回值
  * @since V1.0.0
  */
-static uint16_t CrcValueCalc(const uint8_t *cpucData, uint16_t usLength)
-{
-    uint16_t usCrcValue = 0xFFFF;
-    int iI = 0;
-    while (usLength--)
-    {
-        usCrcValue ^= *cpucData++;
-        for (iI = 8 - 1; iI >= 0; iI--)
-        {
-            if (usCrcValue & 0x0001)
-            {
-                usCrcValue = (usCrcValue >> 1) ^ 0xA001;
-            }
-            else
-            {
-                usCrcValue = usCrcValue >> 1;
-            }
-        }
-    }
-    return (usCrcValue);
-}"
+ static uint16_t CrcValueCalc(const uint8_t *cpucData, uint16_t usLength)
+ {
+     uint16_t usCrcValue = 0xFFFF;
+     int iI = 0;
+     while (usLength--)
+     {
+         usCrcValue ^= *cpucData++;
+         for (iI = 8 - 1; iI >= 0; iI--)
+         {
+             if (usCrcValue & 0x0001)
+             {
+                 usCrcValue = (usCrcValue >> 1) ^ 0xA001;
+             }
+             else
+             {
+                 usCrcValue = usCrcValue >> 1;
+             }
+         }
+     }
+     return (usCrcValue);
+ }
