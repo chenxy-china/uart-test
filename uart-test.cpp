@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
             printf("receive_buff : %d , ", index);  
             for(i = 0 ;i < index; i++){
-                printf("%c",*(receive_buff+i));
+                printf("%02x",*(receive_buff+i));
             }
             printf("\n");
 #endif
