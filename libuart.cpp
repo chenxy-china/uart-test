@@ -260,7 +260,7 @@ int send_str(int tty_fd, std::string anyInputs)
     memset(dataSends+2,j+3,1);
     memcpy(dataSends+3,data,j);
 
-    uint16_t crcdata =  CrcValueCalc((uint8_t *)data,j+3);
+    uint16_t crcdata =  CrcValueCalc((uint8_t *)dataSends,j+3);
     memcpy(dataSends+j+3,(unsigned char *)&crcdata,2);
 
     send_data(tty_fd, dataSends,(j+5));
@@ -296,7 +296,11 @@ int send_str(int tty_fd, std::string anyInputs, int readflag)
     memcpy(dataSends+3,data,j);
 
     uint16_t crcdata =  CrcValueCalc((uint8_t *)data,j+3);
-    memcpy(dataSends+j+3,(unsigned char *)&crcdata,2);
+    // memcpy(dataSends+j+3,(unsigned char *)&crcdata,2);
+    char crclowbyte = crcdata & 0xFF;
+    char crchighbyte = (crcdata & 0xFF00) >> 8 ;
+    memcpy(dataSends+j+3,&crclowbyte ,1);
+    memcpy(dataSends+j+4,&crchighbyte ,1);
 
     send_data(tty_fd, dataSends,(j+5));
 
